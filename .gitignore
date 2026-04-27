@@ -1,0 +1,50 @@
+# Secrets — NEVER commit
+.tokens
+.env
+*.env
+client_secret*.json
+youtube*.json
+youtube_*.json
+**/cookies/
+*.cookies.txt
+
+# Local databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Working files
+work/
+output/
+output_*/
+broll/
+music/
+segments/
+*.mp4
+*.mp3
+*.wav
+*.srt
+*.ass
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

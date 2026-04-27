@@ -1,0 +1,47 @@
+{
+  "_comment": "Movies / blockbuster / superhero clips niche.",
+  "niche": "movies",
+
+  "queries": [
+    "best movie scenes 2025",
+    "best movie scenes 2026",
+    "epic movie fight scenes",
+    "Marvel best moments",
+    "DC best moments",
+    "blockbuster trailer breakdown",
+    "movie ending explained 2026",
+    "behind the scenes blockbuster",
+    "movie cast interview funny",
+    "superhero training transformation",
+    "movie director commentary",
+    "Top 10 movie scenes ever",
+    "iconic action scene compilation"
+  ],
+
+  "channels": [
+    "@MovieclipsTRAILERS",
+    "@FilmIsNow",
+    "@MovieclipsCOMINGSOON",
+    "@HotNewClips",
+    "@AccessHollywood",
+    "@TheHollywoodReporter",
+    "@vanityfair",
+    "@WIRED"
+  ],
+
+  "filters": {
+    "min_duration_sec": 300,
+    "max_duration_sec": 7200,
+    "max_age_days": 30,
+    "min_views": 50000,
+    "languages": ["en"]
+  },
+
+  "limits": {
+    "_comment": "Same per-channel quota as ai_business — 1 video/day -> 6 clips -> 3 posts/day after throttling.",
+    "max_videos_per_query": 5,
+    "max_videos_per_channel": 3,
+    "max_new_videos_per_run": 1,
+    "max_pending_jobs": 3
+  }
+}

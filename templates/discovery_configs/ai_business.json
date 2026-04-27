@@ -1,0 +1,63 @@
+{
+  "_comment": "AI / business / tech niche.",
+  "niche": "ai_business",
+  "queries": [
+    "Anthropic Claude interview",
+    "AI agents 2026",
+    "AI startup founder",
+    "OpenAI announcement",
+    "AI business strategy",
+    "AI changing the world",
+    "future of work AI",
+    "AI venture capital",
+    "Dario Amodei",
+    "Sam Altman interview",
+    "AI replacing jobs",
+    "AGI timeline",
+    "MKBHD review",
+    "tech news this week",
+    "Apple Vision Pro review",
+    "Nvidia AI chip",
+    "tech CEO interview"
+  ],
+  "channels": [
+    "UCBJycsmduvYEL83R_U4JriQ",
+    "UCMiJRAwDNSNzuYeN2uWa0pA",
+    "UCj8DGOv5P7Ngsh-telMG-pw",
+    "UC4-79UOlP48-QNGgCko5p2g",
+    "@LinusTechTips",
+    "@ColdFusion",
+    "@TheVerge",
+    "@TechLinked",
+    "@MattWolfe",
+    "@AIExplained-Official",
+    "@TwoMinutePapers",
+    "@bycloudAI",
+    "@allin",
+    "@DwarkeshPatel",
+    "@lexfridman",
+    "@a16z",
+    "@YCombinator",
+    "@sequoiacapital",
+    "@business",
+    "@CNBCi",
+    "@bloombergtechnology",
+    "@TonyRobbinsLive"
+  ],
+  "filters": {
+    "min_duration_sec": 600,
+    "max_duration_sec": 14400,
+    "max_age_days": 7,
+    "min_views": 5000,
+    "languages": [
+      "en"
+    ]
+  },
+  "limits": {
+    "_comment": "Tuned for YouTube's 6-uploads/day quota across the network.",
+    "max_videos_per_query": 5,
+    "max_videos_per_channel": 3,
+    "max_new_videos_per_run": 1,
+    "max_pending_jobs": 3
+  }
+}

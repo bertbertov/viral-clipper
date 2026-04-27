@@ -1,0 +1,17 @@
+[Unit]
+Description=Clips Poster (auto-uploads approved clips to socials)
+After=network.target clips-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/clips-api
+EnvironmentFile=/etc/clips-api.env
+ExecStart=/opt/clips-api/venv/bin/python poster.py run youtube
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

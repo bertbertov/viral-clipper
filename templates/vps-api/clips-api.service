@@ -1,0 +1,17 @@
+[Unit]
+Description=Clips API (viral clipping pipeline)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/clips-api
+EnvironmentFile=/etc/clips-api.env
+ExecStart=/opt/clips-api/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5903
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
