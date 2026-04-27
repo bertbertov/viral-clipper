@@ -129,6 +129,37 @@ def passes_filters(meta: dict, filters: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
+def topic_match_check(title: str, channel: str, description: str, topic_filter: str) -> tuple[bool, str]:
+    """Use Gemini to check if a video matches the niche's topic. Cheap pre-filter."""
+    if not topic_filter:
+        return True, "no_filter"
+    try:
+        from google import genai
+        prompt = f"""You are filtering YouTube videos for a specific niche.
+
+NICHE TOPIC: {topic_filter}
+
+VIDEO TITLE: {title}
+CHANNEL: {channel}
+DESCRIPTION (first 500 chars): {description[:500]}
+
+Does this video FIT the niche? Reply with JSON only:
+{{"fit": true|false, "reason": "one short sentence"}}
+"""
+        client = genai.Client(api_key=config.GEMINI_KEYS[0])
+        resp = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=prompt,
+            config={"response_mime_type": "application/json", "temperature": 0.1},
+        )
+        import json as _json
+        data = _json.loads(resp.text)
+        return bool(data.get("fit")), data.get("reason", "")
+    except Exception as e:
+        # If filter fails, default to allowing (don't block the pipeline on Gemini hiccups)
+        return True, f"filter_error: {e}"
+
+
 def vps_pending_jobs_for_niche(niche: str) -> int:
     try:
         r = requests.get(f"{config.VPS_API_BASE}/jobs?limit=20",
@@ -203,6 +234,7 @@ def run_niche(niche: str, cfg: dict):
     available = limits["max_pending_jobs"] - pending
     max_new = min(limits["max_new_videos_per_run"], available)
 
+    topic_filter = cfg.get("topic_filter", "")
     for vid, url, title, source, term in candidates:
         if queued_now >= max_new: break
         meta = fetch_video_meta(vid)
@@ -216,6 +248,13 @@ def run_niche(niche: str, cfg: dict):
             print(f"    REJECT  {vid} ({title[:50]}): {reason}")
             record_seen(vid, title, niche, source, term, meta, False, None, reason)
             continue
+        # Topic match via Gemini (rejects off-niche videos like music biopics in a movie-action niche)
+        if topic_filter:
+            fits, why = topic_match_check(meta.get("title", title), meta.get("channel", ""), meta.get("description", ""), topic_filter)
+            if not fits:
+                print(f"    OFFTOPIC {vid} ({title[:50]}): {why}")
+                record_seen(vid, title, niche, source, term, meta, False, None, f"offtopic: {why}")
+                continue
         job_id = submit_job(url, niche)
         if job_id:
             queued_now += 1

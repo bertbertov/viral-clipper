@@ -1,32 +1,28 @@
 {
-  "_comment": "Movies / blockbuster / superhero clips niche.",
+  "_comment": "Action / superhero / blockbuster MOVIE clips niche. NOT music biopics.",
   "niche": "movies",
+  "topic_filter": "Action movies, superhero films (Marvel, DC), blockbuster franchises (Mission Impossible, John Wick, Fast Furious, James Bond), epic fight scenes, big-budget action sequences. EXCLUDE: music biopics, documentaries about musicians, celebrity interviews unrelated to action movies, romance films, comedies without action.",
 
   "queries": [
-    "best movie scenes 2025",
-    "best movie scenes 2026",
-    "epic movie fight scenes",
-    "Marvel best moments",
-    "DC best moments",
-    "blockbuster trailer breakdown",
-    "movie ending explained 2026",
-    "behind the scenes blockbuster",
-    "movie cast interview funny",
-    "superhero training transformation",
-    "movie director commentary",
-    "Top 10 movie scenes ever",
-    "iconic action scene compilation"
+    "Marvel best fight scenes",
+    "DC best action moments",
+    "John Wick fight scene",
+    "Mission Impossible stunt",
+    "James Bond best scenes",
+    "Avengers epic moments",
+    "best superhero fight",
+    "Fast Furious action scene",
+    "blockbuster action trailer 2026",
+    "Top Gun Maverick scenes",
+    "Dune fight scene",
+    "Spider-Man best moments",
+    "Batman action scenes"
   ],
 
   "channels": [
     "@MovieclipsTRAILERS",
     "@FilmIsNow",
-    "@MovieclipsCOMINGSOON",
-    "@HotNewClips",
-    "@AccessHollywood",
-    "@TheHollywoodReporter",
-    "@vanityfair",
-    "@WIRED"
+    "@MovieclipsCOMINGSOON"
   ],
 
   "filters": {

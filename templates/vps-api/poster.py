@@ -141,7 +141,7 @@ def post_tiktok(clip_path: Path, title: str, caption: str) -> str:
 def post_instagram(clip_path: Path, title: str, caption: str, public_url: str) -> str:
     """
     IG Graph API needs a publicly-accessible URL of the video file (not file upload).
-    `public_url` should be the https://YOUR-DOMAIN.com/clips-files/... URL.
+    `public_url` should be the https://pravilo.fitness/clips-files/... URL.
     """
     tok = load_token("instagram")
     if not tok:
@@ -202,49 +202,82 @@ def get_max_posts_per_day() -> int:
     return int(get_setting("max_posts_per_day", "3"))
 
 
-def posts_in_last_24h() -> int:
+def ensure_posted_at_column():
+    """Lazy migration: add posted_at column if missing."""
+    with db() as c:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(clips)").fetchall()]
+        if "posted_at" not in cols:
+            c.execute("ALTER TABLE clips ADD COLUMN posted_at INTEGER")
+            # Backfill: any already-posted clip uses created_at as approximate posted_at
+            c.execute("UPDATE clips SET posted_at = created_at WHERE posted_to IS NOT NULL AND posted_to != ''")
+            c.commit()
+
+
+def posts_in_last_24h(niche: str | None = None) -> int:
+    """Count actual posts (by posted_at) in the last 24h."""
     cutoff = int(time.time()) - 86400
     with db() as c:
+        if niche:
+            return c.execute(
+                "SELECT COUNT(*) FROM clips JOIN jobs ON clips.job_id=jobs.id "
+                "WHERE clips.posted_to IS NOT NULL AND clips.posted_to != '' "
+                "AND clips.posted_at >= ? AND jobs.style_preset = ?",
+                (cutoff, niche),
+            ).fetchone()[0]
         return c.execute(
             "SELECT COUNT(*) FROM clips WHERE posted_to IS NOT NULL AND posted_to != '' "
-            "AND created_at >= ?", (cutoff,)
+            "AND posted_at >= ?", (cutoff,)
         ).fetchone()[0]
 
 
 def last_post_ts() -> int:
     with db() as c:
         r = c.execute(
-            "SELECT MAX(created_at) FROM clips WHERE posted_to IS NOT NULL AND posted_to != ''"
+            "SELECT MAX(posted_at) FROM clips WHERE posted_to IS NOT NULL AND posted_to != ''"
         ).fetchone()
         return r[0] or 0
 
 
 def post_loop(platforms: list[str], poll_sec: int = 60):
-    print(f"[poster] platforms={platforms} poll={poll_sec}s")
+    print(f"[poster] platforms={platforms} poll={poll_sec}s (per-niche cap)")
+    ensure_posted_at_column()
     while True:
         try:
-            # Rate limiting: don't post if we just posted, or if daily quota hit
+            # Global throttle: time since last post across ALL niches (avoid simultaneous posts)
             since_last = int(time.time()) - last_post_ts()
             throttle = get_post_throttle_sec()
-            today_count = posts_in_last_24h()
-            max_today = get_max_posts_per_day()
+            max_per_niche = get_max_posts_per_day()  # now per-niche, not global
 
             if since_last < throttle:
                 time.sleep(min(60, throttle - since_last))
                 continue
-            if today_count >= max_today:
-                # Sleep an hour, will re-check
-                time.sleep(3600)
-                continue
 
+            # Pick next clip: starved niche first (fewest posts today), then highest score
             with db() as c:
                 rows = c.execute("""
                     SELECT clips.*, jobs.youtube_url, jobs.style_preset AS niche
                     FROM clips JOIN jobs ON clips.job_id = jobs.id
                     WHERE clips.approved = 1 AND (clips.posted_to IS NULL OR clips.posted_to='')
                     ORDER BY clips.score DESC
-                    LIMIT 1
                 """).fetchall()
+
+            # Annotate each candidate with its niche's post count, sort by (niche_count ASC, score DESC)
+            scored = []
+            for r in rows:
+                nc = posts_in_last_24h(r["niche"])
+                if nc >= max_per_niche:
+                    continue  # niche capped
+                scored.append((nc, -r["score"], r))
+            scored.sort(key=lambda x: (x[0], x[1]))
+
+            if not scored:
+                print(f"[poster] all niches at cap ({max_per_niche}/day), sleeping 1h")
+                time.sleep(3600)
+                continue
+
+            picked = scored[0][2]
+            print(f"[poster] picked clip {picked['id']} (niche={picked['niche']}, score={picked['score']}, niche_today={scored[0][0]})")
+            rows = [picked]
                 # approved values: 0=pending, 1=approved-for-post, -1=render-only-never-post
 
             for row in rows:
@@ -260,7 +293,7 @@ def post_loop(platforms: list[str], poll_sec: int = 60):
                         elif platform == "tiktok":
                             url = post_tiktok(clip_path, row["title"], row["caption"])
                         elif platform == "instagram":
-                            public = f"https://YOUR-DOMAIN.com/clips-files/jobs/{row['job_id']}/clips/{row['id']}/file"
+                            public = f"https://pravilo.fitness/clips-files/jobs/{row['job_id']}/clips/{row['id']}/file"
                             url = post_instagram(clip_path, row["title"], row["caption"], public)
                         else:
                             continue
@@ -272,8 +305,8 @@ def post_loop(platforms: list[str], poll_sec: int = 60):
 
                 with db() as c:
                     c.execute(
-                        "UPDATE clips SET posted_to=? WHERE id=?",
-                        (json.dumps(results), row["id"]),
+                        "UPDATE clips SET posted_to=?, posted_at=? WHERE id=?",
+                        (json.dumps(results), int(time.time()), row["id"]),
                     )
                     c.commit()
         except Exception as e:
