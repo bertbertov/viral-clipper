@@ -253,11 +253,20 @@ def post_loop(platforms: list[str], poll_sec: int = 60):
                 continue
 
             # Pick next clip: starved niche first (fewest posts today), then highest score
+            # CONSTRAINT: only ONE post per source video — never post a 2nd clip from a job
+            # whose other clip already went out.
             with db() as c:
                 rows = c.execute("""
                     SELECT clips.*, jobs.youtube_url, jobs.style_preset AS niche
                     FROM clips JOIN jobs ON clips.job_id = jobs.id
-                    WHERE clips.approved = 1 AND (clips.posted_to IS NULL OR clips.posted_to='')
+                    WHERE clips.approved = 1
+                      AND (clips.posted_to IS NULL OR clips.posted_to='')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM clips c2
+                          WHERE c2.job_id = clips.job_id
+                            AND c2.posted_to IS NOT NULL
+                            AND c2.posted_to != ''
+                      )
                     ORDER BY clips.score DESC
                 """).fetchall()
 
@@ -272,7 +281,7 @@ def post_loop(platforms: list[str], poll_sec: int = 60):
 
             if not scored:
                 print(f"[poster] all niches at cap ({max_per_niche}/day), sleeping 1h")
-                time.sleep(3600)
+                time.sleep(300)  # 5 min — re-check often as new clips finish rendering
                 continue
 
             picked = scored[0][2]
