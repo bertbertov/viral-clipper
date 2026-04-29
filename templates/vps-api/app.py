@@ -3,7 +3,7 @@ clips-api: tiny FastAPI service for the viral clipping pipeline.
 - Frontend posts jobs here.
 - Laptop worker long-polls for jobs and uploads clips.
 - Stores everything in SQLite + filesystem.
-- Plain CORS open to YOUR-DOMAIN.com only.
+- Plain CORS open to pravilo.fitness only.
 
 Run:
   uvicorn app:app --host 0.0.0.0 --port 5903
@@ -35,7 +35,7 @@ app = FastAPI(title="clips-api")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://YOUR-DOMAIN.com", "http://localhost:3000"],
+    allow_origins=["https://pravilo.fitness", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -211,6 +211,82 @@ def approve_clip(clip_id: int, x_admin_token: Optional[str] = Header(None)):
         c.execute("UPDATE clips SET approved=1 WHERE id=?", (clip_id,))
         c.commit()
     return {"ok": True}
+
+
+@app.post("/clips/{clip_id}/post-now")
+def post_clip_now(
+    clip_id: int,
+    to: str = "this",  # "this" = clip's own niche, "all" = every configured channel, or comma list
+    x_admin_token: Optional[str] = Header(None),
+):
+    """Immediate manual post, bypassing throttle + daily cap + 1-per-video rules.
+    `to=this` posts to the clip's own niche channel.
+    `to=all` cross-posts to every channel that has a YouTube token.
+    `to=ai_business,movies` posts only to the listed niches.
+    """
+    require_admin(x_admin_token=x_admin_token)
+    import json as _json
+    with db() as c:
+        row = c.execute(
+            "SELECT clips.*, jobs.style_preset AS niche FROM clips "
+            "JOIN jobs ON clips.job_id=jobs.id WHERE clips.id=?",
+            (clip_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "clip not found")
+
+    clip_path = CLIPS_DIR / row["job_id"] / row["filename"]
+    if not clip_path.exists():
+        raise HTTPException(404, "file missing on disk")
+
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent))
+    from poster import post_youtube
+
+    # Determine which channels to post to
+    if to == "this":
+        targets = [row["niche"] or "default"]
+    elif to == "all":
+        # Discover all youtube_*.json tokens
+        token_dir = Path("/etc/clips-tokens")
+        targets = []
+        for tok_file in token_dir.glob("youtube_*.json"):
+            niche = tok_file.stem.replace("youtube_", "")
+            targets.append(niche)
+        if not targets:
+            raise HTTPException(500, "no YouTube tokens found")
+    else:
+        targets = [t.strip() for t in to.split(",") if t.strip()]
+
+    # Merge with existing posted_to (don't lose previous posts)
+    existing = {}
+    if row["posted_to"]:
+        try: existing = _json.loads(row["posted_to"])
+        except: pass
+
+    results = dict(existing)
+    errors = {}
+    for niche in targets:
+        platform_key = f"youtube_{niche}"
+        if platform_key in existing and not existing[platform_key].startswith("ERROR"):
+            continue  # already posted to this channel
+        try:
+            url = post_youtube(clip_path, row["title"], row["caption"], niche=niche)
+            results[platform_key] = url
+        except Exception as e:
+            errors[platform_key] = str(e)[:200]
+            results[platform_key] = f"ERROR: {str(e)[:100]}"
+
+    now = int(time.time())
+    with db() as c:
+        c.execute(
+            "UPDATE clips SET approved=1, posted_to=?, posted_at=? WHERE id=?",
+            (_json.dumps(results), now, clip_id),
+        )
+        c.commit()
+    if errors and len(errors) == len(targets):
+        raise HTTPException(500, f"all uploads failed: {errors}")
+    return {"ok": True, "results": results, "errors": errors or None}
 
 
 @app.delete("/jobs/{job_id}")

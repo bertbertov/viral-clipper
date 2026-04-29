@@ -188,6 +188,23 @@ export default function ClipsPage() {
     if (selectedJob) loadClips(selectedJob);
   };
 
+  const handlePostNow = async (clipId: number, to: 'this' | 'all') => {
+    if (!confirm(to === 'all' ? 'Post this clip to BOTH YouTube channels right now?' : 'Post this clip to its channel right now?')) return;
+    try {
+      const r = await fetch(`${API}/clips/${clipId}/post-now?to=${to}`, {
+        method: 'POST',
+        headers: headers(),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || JSON.stringify(data));
+      const urls = Object.entries(data.results || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+      alert(`Posted!\n\n${urls}`);
+      if (selectedJob) loadClips(selectedJob);
+    } catch (e) {
+      alert('Failed: ' + e);
+    }
+  };
+
   const handleDelete = async (jobId: string) => {
     if (!confirm('Delete job and all its clips?')) return;
     await fetch(`${API}/jobs/${jobId}`, { method: 'DELETE', headers: headers() });
@@ -462,12 +479,12 @@ export default function ClipsPage() {
                     </div>
                     <p style={{ fontSize: '0.8rem', color: '#8B8278', marginTop: '0.5rem', lineHeight: 1.4 }}>{c.caption}</p>
                     <p style={{ fontSize: '0.75rem', color: '#8B8278', marginTop: '0.5rem', fontStyle: 'italic' }}>{c.reason}</p>
-                    <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <button
                         onClick={() => handleApprove(c.id)}
                         disabled={c.approved === 1}
                         style={{
-                          padding: '0.4rem 0.8rem',
+                          padding: '0.4rem 0.7rem',
                           background: c.approved ? '#3b7a3a' : '#1A1A18',
                           color: '#fff',
                           border: 'none',
@@ -479,11 +496,46 @@ export default function ClipsPage() {
                       >
                         {c.approved ? 'Approved' : 'Approve'}
                       </button>
+                      <button
+                        onClick={() => handlePostNow(c.id, 'this')}
+                        disabled={!!c.posted_to}
+                        style={{
+                          padding: '0.4rem 0.7rem',
+                          background: c.posted_to ? '#666' : '#C9A96E',
+                          color: '#1A1A18',
+                          border: 'none',
+                          fontSize: '0.7rem',
+                          letterSpacing: '0.05em',
+                          textTransform: 'uppercase',
+                          cursor: c.posted_to ? 'default' : 'pointer',
+                          fontWeight: 600,
+                        }}
+                        title="Post to this clip's channel right now (bypasses throttle)"
+                      >
+                        {c.posted_to ? 'Posted' : 'Post Now'}
+                      </button>
+                      <button
+                        onClick={() => handlePostNow(c.id, 'all')}
+                        style={{
+                          padding: '0.4rem 0.7rem',
+                          background: '#1A1A18',
+                          color: '#C9A96E',
+                          border: '1px solid #C9A96E',
+                          fontSize: '0.7rem',
+                          letterSpacing: '0.05em',
+                          textTransform: 'uppercase',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                        }}
+                        title="Cross-post to BOTH YouTube channels right now"
+                      >
+                        Post to Both
+                      </button>
                       <a
                         href={`${API}/jobs/${selectedJob}/clips/${c.id}/file?token=${encodeURIComponent(token)}`}
                         download={c.filename}
                         style={{
-                          padding: '0.4rem 0.8rem',
+                          padding: '0.4rem 0.7rem',
                           background: 'transparent',
                           color: '#1A1A18',
                           border: '1px solid #1A1A18',
