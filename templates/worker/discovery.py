@@ -173,11 +173,16 @@ def vps_pending_jobs_for_niche(niche: str) -> int:
 
 
 def submit_job(url: str, niche: str) -> str | None:
-    """Submit job tagged with niche (we abuse style_preset for routing)."""
+    """Submit job tagged with niche. Propagates CLIPS_AUTO_CROSSPOST flag if set."""
+    body = {"youtube_url": url, "style_preset": niche}
+    # Stash crosspost intent in extra_hashtags using a sentinel marker the
+    # backend recognizes (cleanest way to pass per-job flags without API churn)
+    if os.getenv("CLIPS_AUTO_CROSSPOST"):
+        body["extra_hashtags"] = "__AUTO_CROSSPOST__"
     try:
         r = requests.post(
             f"{config.VPS_API_BASE}/jobs",
-            json={"youtube_url": url, "style_preset": niche},
+            json=body,
             headers={"X-Admin-Token": os.getenv("CLIPS_ADMIN_TOKEN", "")},
             timeout=15,
         )

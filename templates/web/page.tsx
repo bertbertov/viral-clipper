@@ -188,6 +188,19 @@ export default function ClipsPage() {
     if (selectedJob) loadClips(selectedJob);
   };
 
+  const handleRunPipeline = async () => {
+    if (!confirm('Trigger the full pipeline?\n\nThis will:\n1. Discover 1 viral video per niche\n2. Render 6 clips each\n3. Auto-post the top-scoring clip from each video to BOTH YouTube channels\n\nProceeds even if daily caps are hit.')) return;
+    try {
+      const r = await fetch(`${API}/pipeline/run-now`, { method: 'POST', headers: headers() });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || JSON.stringify(data));
+      alert(`Triggered.\n\nWorker will start in ~30s. Discovery takes ~1 min, then each video takes ~10 min to render. Cross-posts happen automatically.`);
+      loadJobs();
+    } catch (e) {
+      alert('Failed: ' + e);
+    }
+  };
+
   const handlePostNow = async (clipId: number, to: 'this' | 'all') => {
     if (!confirm(to === 'all' ? 'Post this clip to BOTH YouTube channels right now?' : 'Post this clip to its channel right now?')) return;
     try {
@@ -269,6 +282,27 @@ export default function ClipsPage() {
             Sign out
           </button>
         </div>
+
+        {/* One-button pipeline trigger */}
+        <button
+          onClick={handleRunPipeline}
+          style={{
+            width: '100%',
+            padding: '1.25rem 2rem',
+            marginBottom: '2rem',
+            background: 'linear-gradient(135deg, #C9A96E, #b39159)',
+            color: '#1A1A18',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+            boxShadow: '0 4px 12px rgba(201, 169, 110, 0.25)',
+          }}
+        >
+          ▶  Find Viral Video → Make Clip → Post to Both Channels
+        </button>
 
         {/* Submit form */}
         <form onSubmit={handleSubmit} style={{ marginBottom: '3rem' }}>

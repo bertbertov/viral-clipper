@@ -213,6 +213,29 @@ def approve_clip(clip_id: int, x_admin_token: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+@app.post("/pipeline/run-now")
+def pipeline_run_now(x_admin_token: Optional[str] = Header(None)):
+    """One-button trigger: discover -> render -> cross-post to all channels.
+    Creates a special trigger job. The laptop worker runs discovery, queues
+    new video jobs with auto_crosspost flag. When clips finish, the top-scoring
+    clip from each new job is auto-posted to every configured channel."""
+    require_admin(x_admin_token=x_admin_token)
+    import json as _json
+    job_id = uuid.uuid4().hex[:12]
+    now = int(time.time())
+    with db() as c:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(jobs)").fetchall()]
+        if "overrides" not in cols:
+            c.execute("ALTER TABLE jobs ADD COLUMN overrides TEXT")
+        c.execute(
+            "INSERT INTO jobs(id, youtube_url, style_preset, status, created_at, updated_at, overrides) "
+            "VALUES (?, '__DISCOVERY_TRIGGER__', '__trigger__', 'queued', ?, ?, ?)",
+            (job_id, now, now, _json.dumps({"_trigger": "discover_and_crosspost"})),
+        )
+        c.commit()
+    return {"ok": True, "trigger_id": job_id, "message": "Discovery + cross-post triggered. Worker will pick up within 30s."}
+
+
 @app.post("/clips/{clip_id}/post-now")
 def post_clip_now(
     clip_id: int,
@@ -373,6 +396,7 @@ def worker_upload(
     skip_posting = False
     force_manual = False
     extra_tags = ""
+    auto_crosspost = False
     with db() as c:
         r = c.execute("SELECT overrides FROM jobs WHERE id=?", (job_id,)).fetchone()
         if r and r["overrides"]:
@@ -381,6 +405,9 @@ def worker_upload(
                 skip_posting = bool(overrides.get("skip_posting"))
                 force_manual = bool(overrides.get("force_manual_approve"))
                 extra_tags = overrides.get("extra_hashtags", "")
+                if extra_tags == "__AUTO_CROSSPOST__":
+                    auto_crosspost = True
+                    extra_tags = ""  # don't append the sentinel
             except Exception:
                 pass
 
@@ -391,9 +418,8 @@ def worker_upload(
     auto_approve  = get_setting("auto_approve", "false") == "true"
     min_score     = int(get_setting("auto_approve_min_score", "0"))
     pre_approved  = 0
-    if not skip_posting and not force_manual and auto_approve and score >= min_score:
+    if not skip_posting and not force_manual and (auto_approve or auto_crosspost) and score >= min_score:
         pre_approved = 1
-    # skip_posting marks as -1 (never post even if approved)
     if skip_posting:
         pre_approved = -1
 
@@ -404,7 +430,47 @@ def worker_upload(
             (job_id, clip.filename, title, caption, score, reason, duration, pre_approved, int(time.time())),
         )
         c.commit()
-    return {"ok": True, "saved_to": str(dest), "approved_state": pre_approved}
+        new_clip_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # AUTO-CROSSPOST: if this is the top-scoring clip from the job AND crosspost flag set,
+    # immediately post to all channels. Mark the rest as approved=-1 so they don't post.
+    if auto_crosspost and pre_approved == 1:
+        with db() as c:
+            # Check if this clip is currently the top score from the job
+            top = c.execute(
+                "SELECT id, score FROM clips WHERE job_id=? ORDER BY score DESC LIMIT 1",
+                (job_id,)
+            ).fetchone()
+        if top and top["id"] == new_clip_id:
+            # Trigger immediate cross-post in background — don't block the upload response
+            import threading
+            def _crosspost():
+                try:
+                    import sys as _sys
+                    _sys.path.insert(0, str(Path(__file__).parent))
+                    from poster import post_youtube
+                    token_dir = Path("/etc/clips-tokens")
+                    targets = [p.stem.replace("youtube_", "") for p in token_dir.glob("youtube_*.json")]
+                    results = {}
+                    for niche in targets:
+                        try:
+                            url = post_youtube(dest, title, caption, niche=niche)
+                            results[f"youtube_{niche}"] = url
+                            print(f"[crosspost] {niche}: {url}", flush=True)
+                        except Exception as e:
+                            results[f"youtube_{niche}"] = f"ERROR: {str(e)[:100]}"
+                            print(f"[crosspost] {niche} FAILED: {e}", flush=True)
+                    with db() as c2:
+                        c2.execute(
+                            "UPDATE clips SET posted_to=?, posted_at=? WHERE id=?",
+                            (_json.dumps(results), int(time.time()), new_clip_id),
+                        )
+                        c2.commit()
+                except Exception as e:
+                    print(f"[crosspost] background failed: {e}", flush=True)
+            threading.Thread(target=_crosspost, daemon=True).start()
+
+    return {"ok": True, "saved_to": str(dest), "approved_state": pre_approved, "auto_crosspost": auto_crosspost}
 
 
 # ─── SETTINGS ENDPOINTS ──────────────────────────────────────────────────────

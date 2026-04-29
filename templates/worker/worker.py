@@ -64,6 +64,32 @@ def pull_one_job():
         return None
 
 
+def handle_trigger_job(job):
+    """Trigger job means: run discovery now, optionally with crosspost flag for new jobs."""
+    job_id = job["id"]
+    overrides_str = job.get("overrides") or "{}"
+    try:
+        overrides = json.loads(overrides_str)
+    except Exception:
+        overrides = {}
+    trigger = overrides.get("_trigger", "")
+    print(f"[worker] TRIGGER {job_id}: {trigger}")
+    report_status(job_id, "running:discovery", f"trigger={trigger}")
+    # Set env var so discovery knows to flag new jobs for crosspost
+    if trigger == "discover_and_crosspost":
+        os.environ["CLIPS_AUTO_CROSSPOST"] = "1"
+    try:
+        from discovery import run as run_discovery
+        run_discovery()
+        report_status(job_id, "done", "discovery complete")
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[worker] trigger {job_id} crashed:\n{tb}")
+        report_status(job_id, "failed", str(e)[:500])
+    finally:
+        os.environ.pop("CLIPS_AUTO_CROSSPOST", None)
+
+
 def run_loop():
     print(f"[worker] starting, VPS={config.VPS_API_BASE}, poll={config.POLL_INTERVAL_SEC}s")
     while True:
@@ -73,6 +99,12 @@ def run_loop():
             continue
 
         job_id = job["id"]
+
+        # Special trigger jobs run discovery, not video processing
+        if job.get("youtube_url") == "__DISCOVERY_TRIGGER__":
+            handle_trigger_job(job)
+            continue
+
         print(f"\n{'='*60}\n[worker] picked up job {job_id}\n  url: {job['youtube_url']}\n{'='*60}")
 
         def on_progress(stage, msg):
